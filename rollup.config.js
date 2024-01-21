@@ -25,7 +25,7 @@ export default [
       format: "es",
     },
     plugins: [
-      typescript({ compilerOptions: { module: "esnext" } }),
+      typescript(),
       terser({
         format: {
           comments: false,

@@ -12,14 +12,16 @@
   ],
   "scripts": {
     "prepare": "husky install",
-    "type:check": "tsc src/*.ts --noEmit",
+    "type:check": "tsc --noEmit",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
     "format": "prettier --write --ignore-unknown {src,test}/*",
     "format:check": "prettier --check {src,test}/*",
     "test": "vitest run --coverage",
     "pre-commit": "lint-staged",
     "prebuild": "rimraf dist && mkdir dist",
     "build": "npm run build:types && npm run build:lib",
-    "build:types": "tsc src/*.ts --declaration --emitDeclarationOnly --outDir dist",
+    "build:types": "tsc --declaration --emitDeclarationOnly --outDir dist",
     "build:lib": "rollup -c",
     "postversion": "git push && git push --tags"
   },

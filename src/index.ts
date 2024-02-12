@@ -11,12 +11,14 @@
  * @method has - Checks if the key exists in the cache
  * @method remove - Removes the key-value pair from the cache
  * @method clear - Clears the cache
+ * @method clearStats - Clears the cache's internal stats
  * @method resize - Resizes the cache
  *
  * @getter first - Gets the first key in the cache
  * @getter last - Gets the last key in the cache
  * @getter size - Gets the number of items in the cache
  * @getter capacity - Gets the maximum number of items the cache can hold
+ * @getter stats - Gets the cache's internal stats
  *
  * @throws {Error} - If capacity is less than 1
  *
@@ -31,14 +33,34 @@
  */
 class LRUCache<K, V> {
   /**
-   * @param {number} capacity - The maximum number of items the cache can hold
+   * @private
+   * @type {number} - The maximum number of items the cache can hold
    */
   #capacity: number;
 
   /**
-   * @param {Map<K, V>} map - The underlying map that holds the cache
+   * @private
+   * @type {Map<K, V>} - The underlying map that holds the cache
    */
   #map: Map<K, V>;
+
+  /**
+   * @private
+   * @type {Object} - Internal tracking of statistical cache events
+   * @property {number} hit - The number of successful retrievals from the
+   * cache.
+   * @property {number} miss - The number of failed retrievals from the cache.
+   * @property {number} eviction - The number of items that have been removed
+   * from the cache by the eviction policy.
+   * @property {number} access - The total number of attempts to retrieve items
+   * from the cache.
+   */
+  #stats = {
+    hit: 0,
+    miss: 0,
+    eviction: 0,
+    access: 0,
+  };
 
   /**
    * Creates a new LRUCache
@@ -80,8 +102,14 @@ class LRUCache<K, V> {
       this.#map.delete(key);
       this.#map.set(key, value);
 
-      return value;
+      this.#stats.hit += 1;
+    } else {
+      this.#stats.miss += 1;
     }
+
+    this.#stats.access += 1;
+
+    return value;
   }
 
   /**
@@ -105,6 +133,7 @@ class LRUCache<K, V> {
       this.#map.delete(key);
     } else if (this.size === this.capacity) {
       this.#map.delete(this.first!);
+      this.#stats.eviction += 1;
     }
 
     this.#map.set(key, value);
@@ -178,6 +207,23 @@ class LRUCache<K, V> {
    */
   clear(): void {
     this.#map.clear();
+  }
+
+  /**
+   * Clears the cache's internal stats
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2);
+   * (...)
+   * cache.clearStats();
+   */
+  clearStats(): void {
+    this.#stats = {
+      hit: 0,
+      miss: 0,
+      access: 0,
+      eviction: 0,
+    };
   }
 
   /**
@@ -268,6 +314,57 @@ class LRUCache<K, V> {
   get capacity(): number {
     return this.#capacity;
   }
+
+  /**
+   * Gets the cache's internal stats
+   *
+   * @returns {LRUCacheStats} - The cache's internal stats
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2);
+   * cache.put("a", 1);
+   * cache.put("b", 2);
+   * cache.get("a");
+   * cache.stats; // { hitRate: 0.5, missRate: 0.5, evictionRate: 0, effectiveness: 0 }
+   * cache.put("c", 3);
+   * cache.stats; // { hitRate: 0.25, missRate: 0.75, evictionRate: 0.25, effectiveness: 1 }
+   */
+  get stats(): LRUCacheStats {
+    const hitRate = this.#stats.access
+      ? this.#stats.hit / this.#stats.access
+      : 0;
+    const missRate = this.#stats.access
+      ? this.#stats.miss / this.#stats.access
+      : 0;
+    const evictionRate = this.#stats.access
+      ? this.#stats.eviction / this.#stats.access
+      : 0;
+    const effectiveness = this.#stats.hit
+      ? this.#stats.eviction / this.#stats.hit
+      : 0;
+
+    return {
+      hitRate,
+      missRate,
+      evictionRate,
+      effectiveness,
+    };
+  }
 }
+
+/**
+ * The cache's internal stats
+ *
+ * @property {number} hitRate - Hit Rate = (Number of Cache Hits) / (Total Number of Cache Accesses)
+ * @property {number} missRate - Miss Rate = (Number of Cache Misses) / (Total Number of Cache Accesses)
+ * @property {number} evictionRate - Eviction Rate = (Number of Evictions) / (Total Number of Cache Accesses)
+ * @property {number} effectiveness - LRU Policy Effectiveness = (Number of LRU-Based Evictions) / (Total Number of Cache Hits)
+ */
+type LRUCacheStats = {
+  hitRate: number;
+  missRate: number;
+  evictionRate: number;
+  effectiveness: number;
+};
 
 export default LRUCache;

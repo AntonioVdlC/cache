@@ -63,6 +63,84 @@ describe("LRUCache", () => {
         expect(cache.capacity).toBe(1);
       });
     });
+
+    describe("stats", () => {
+      it("should return basic stats of the cache", () => {
+        const cache = new LRUCache<string, number>(1);
+
+        expect(Object.keys(cache.stats)).toStrictEqual([
+          "hitRate",
+          "missRate",
+          "evictionRate",
+          "effectiveness",
+        ]);
+      });
+      it("should initialise stats to 0", () => {
+        const cache = new LRUCache<string, number>(1);
+
+        expect(cache.stats.hitRate).toBe(0);
+        expect(cache.stats.missRate).toBe(0);
+        expect(cache.stats.evictionRate).toBe(0);
+        expect(cache.stats.effectiveness).toBe(0);
+      });
+      it("should properly calculate hit rate", () => {
+        const cache = new LRUCache<string, number>(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        expect(cache.stats.hitRate).toBe(0);
+
+        cache.get("a");
+        expect(cache.stats.hitRate).toBe(1);
+
+        cache.get("c"); // Miss
+        expect(cache.stats.hitRate).toBe(0.5);
+      });
+      it("should properly calculate miss rate", () => {
+        const cache = new LRUCache<string, number>(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        expect(cache.stats.missRate).toBe(0);
+
+        cache.get("a");
+        expect(cache.stats.missRate).toBe(0);
+
+        cache.get("c"); // Miss
+        expect(cache.stats.missRate).toBe(0.5);
+      });
+      it("should properly calculate eviction rate", () => {
+        const cache = new LRUCache<string, number>(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        expect(cache.stats.evictionRate).toBe(0);
+
+        cache.get("a");
+        expect(cache.stats.evictionRate).toBe(0);
+
+        cache.put("c", 3);
+        expect(cache.stats.evictionRate).toBe(1);
+
+        cache.get("b"); // Miss
+        expect(cache.stats.evictionRate).toBe(0.5);
+      });
+      it("should properly calculate effectiveness", () => {
+        const cache = new LRUCache<string, number>(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        expect(cache.stats.effectiveness).toBe(0);
+
+        cache.get("a");
+        expect(cache.stats.effectiveness).toBe(0);
+
+        cache.put("c", 3);
+        expect(cache.stats.effectiveness).toBe(1);
+
+        cache.get("b"); // Miss
+        expect(cache.stats.effectiveness).toBe(1);
+
+        cache.get("c");
+        expect(cache.stats.effectiveness).toBe(0.5);
+      });
+    });
   });
 
   describe("methods", () => {
@@ -204,6 +282,29 @@ describe("LRUCache", () => {
         expect(cache.has("b")).toBe(false);
         expect(cache.size).toBe(0);
         expect(cache.capacity).toBe(2);
+      });
+    });
+
+    describe("clearStats", () => {
+      it("should reset the stats", () => {
+        const cache = new LRUCache<string, number>(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.get("a");
+        cache.get("c");
+        cache.put("c", 3);
+
+        expect(cache.stats.hitRate).not.toBe(0);
+        expect(cache.stats.missRate).not.toBe(0);
+        expect(cache.stats.evictionRate).not.toBe(0);
+        expect(cache.stats.effectiveness).not.toBe(0);
+
+        cache.clearStats();
+
+        expect(cache.stats.hitRate).toBe(0);
+        expect(cache.stats.missRate).toBe(0);
+        expect(cache.stats.evictionRate).toBe(0);
+        expect(cache.stats.effectiveness).toBe(0);
       });
     });
 

@@ -13,8 +13,8 @@
   "scripts": {
     "prepare": "husky install",
     "type:check": "tsc --noEmit",
-    "lint": "eslint",
-    "lint:fix": "eslint --fix",
+    "lint": "eslint {src,test}/*",
+    "lint:fix": "eslint --fix {src,test}/*",
     "format": "prettier --write --ignore-unknown {src,test}/*",
     "format:check": "prettier --check {src,test}/*",
     "test": "vitest run --coverage",
@@ -38,6 +38,8 @@
   "license": "MIT",
   "devDependencies": {
     "@rollup/plugin-typescript": "^11.1.6",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
     "@vitest/coverage-v8": "^1.2.0",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",

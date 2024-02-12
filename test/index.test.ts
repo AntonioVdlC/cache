@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import LRUCache from "../src";
+import LRUCache, { CacheEvent } from "../src";
 
 describe("LRUCache", () => {
   describe("constructor", () => {
@@ -338,6 +338,133 @@ describe("LRUCache", () => {
         cache.resize(3);
         expect(cache.has("a")).toBe(true);
         expect(cache.has("b")).toBe(true);
+      });
+    });
+    describe("on", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it("should throw an error if event is not supported", () => {
+        const cache = new LRUCache<string, number>(1);
+        // @ts-expect-error - Testing invalid event
+        expect(() => cache.on("foo", () => {})).toThrow("Invalid event: foo");
+      });
+      it("should add an event listener", () => {
+        const cache = new LRUCache<string, number>(1);
+        const listener = vi.fn();
+        cache.on(CacheEvent.Insertion, listener);
+        cache.put("a", 1);
+        expect(listener).toHaveBeenCalledWith(CacheEvent.Insertion, {
+          key: "a",
+          value: 1,
+        });
+      });
+      it("should remove an event listener", () => {
+        const cache = new LRUCache<string, number>(2);
+        const listener = vi.fn();
+        const { unregister } = cache.on(CacheEvent.Insertion, listener);
+        cache.put("a", 1);
+        expect(listener).toHaveBeenCalledWith(CacheEvent.Insertion, {
+          key: "a",
+          value: 1,
+        });
+        unregister();
+        cache.put("b", 2);
+        expect(listener).toHaveBeenCalledOnce();
+      });
+      it("should emit an event for every insertion", () => {
+        const cache = new LRUCache<string, number>(2);
+        const listener = vi.fn();
+        cache.on(CacheEvent.Insertion, listener);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        expect(listener).toHaveBeenCalledWith(CacheEvent.Insertion, {
+          key: "a",
+          value: 1,
+        });
+        expect(listener).toHaveBeenCalledWith(CacheEvent.Insertion, {
+          key: "b",
+          value: 2,
+        });
+      });
+      it("should emit an event for every removal", () => {
+        const cache = new LRUCache<string, number>(2);
+        const listener = vi.fn();
+        cache.on(CacheEvent.Removal, listener);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.remove("a");
+        expect(listener).toHaveBeenCalledWith(CacheEvent.Removal, {
+          key: "a",
+          value: 1,
+        });
+      });
+      it("should emit an event for every removal during clear()", () => {
+        const cache = new LRUCache<string, number>(2);
+        const listener = vi.fn();
+        cache.on(CacheEvent.Removal, listener);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.clear();
+        expect(listener).toHaveBeenCalledWith(CacheEvent.Removal, {
+          key: "a",
+          value: 1,
+        });
+        expect(listener).toHaveBeenCalledWith(CacheEvent.Removal, {
+          key: "b",
+          value: 2,
+        });
+      });
+      it("should emit an event for every eviction", () => {
+        const cache = new LRUCache<string, number>(1);
+        const listener = vi.fn();
+        cache.on(CacheEvent.Eviction, listener);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        expect(listener).toHaveBeenCalledWith(CacheEvent.Eviction, {
+          key: "a",
+          value: 1,
+        });
+      });
+      it("should emit an event for every eviction during resize()", () => {
+        const cache = new LRUCache<string, number>(2);
+        const listener = vi.fn();
+        cache.on(CacheEvent.Eviction, listener);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.resize(1);
+        expect(listener).toHaveBeenCalledWith(CacheEvent.Eviction, {
+          key: "a",
+          value: 1,
+        });
+      });
+      it("should emit an event when cache is full", () => {
+        const cache = new LRUCache<string, number>(2);
+        const listener = vi.fn();
+        cache.on(CacheEvent.Full, listener);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        expect(listener).toHaveBeenCalledOnce();
+      });
+      it("should emit an event when cache is empty", () => {
+        const cache = new LRUCache<string, number>(2);
+        const listener = vi.fn();
+        cache.on(CacheEvent.Empty, listener);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.remove("a");
+        cache.remove("b");
+        expect(listener).toHaveBeenCalledOnce();
+      });
+      it("should emit an event when cache is empty after clear()", () => {
+        const cache = new LRUCache<string, number>(2);
+        const listener = vi.fn();
+        cache.on(CacheEvent.Empty, listener);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.clear();
+        expect(listener).toHaveBeenCalledOnce();
       });
     });
   });

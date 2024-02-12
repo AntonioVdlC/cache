@@ -13,6 +13,7 @@
  * @method clear - Clears the cache
  * @method clearStats - Clears the cache's internal stats
  * @method resize - Resizes the cache
+ * @method on - Registers an event handler for the specified cache event
  *
  * @getter first - Gets the first key in the cache
  * @getter last - Gets the last key in the cache
@@ -21,6 +22,7 @@
  * @getter stats - Gets the cache's internal stats
  *
  * @throws {Error} - If capacity is less than 1
+ * @throws {Error} - If event being registered is invalid
  *
  * @example
  * const cache = new LRUCache<string, number>(2);
@@ -60,6 +62,18 @@ class LRUCache<K, V> {
     miss: 0,
     eviction: 0,
     access: 0,
+  };
+
+  /**
+   * @private
+   * @type {Object} - Internal tracking of event handlers
+   */
+  #eventHandlers: Record<CacheEvent, Array<CacheEventHandler<K, V>>> = {
+    [CacheEvent.Insertion]: [],
+    [CacheEvent.Eviction]: [],
+    [CacheEvent.Removal]: [],
+    [CacheEvent.Full]: [],
+    [CacheEvent.Empty]: [],
   };
 
   /**
@@ -132,11 +146,18 @@ class LRUCache<K, V> {
     if (this.#map.has(key)) {
       this.#map.delete(key);
     } else if (this.size === this.capacity) {
-      this.#map.delete(this.first!);
+      const key = this.first!;
+      this.#emit(CacheEvent.Eviction, key, this.#map.get(key));
+      this.#map.delete(key);
       this.#stats.eviction += 1;
     }
 
     this.#map.set(key, value);
+    this.#emit(CacheEvent.Insertion, key, value);
+
+    if (this.size === this.capacity) {
+      this.#emit(CacheEvent.Full);
+    }
   }
 
   /**
@@ -190,7 +211,12 @@ class LRUCache<K, V> {
    * cache.size; // 1
    */
   remove(key: K): void {
+    this.#emit(CacheEvent.Removal, key, this.#map.get(key));
     this.#map.delete(key);
+
+    if (this.size === 0) {
+      this.#emit(CacheEvent.Empty);
+    }
   }
 
   /**
@@ -206,7 +232,14 @@ class LRUCache<K, V> {
    * cache.size; // 0
    */
   clear(): void {
+    if (this.#eventHandlers[CacheEvent.Removal].length > 0) {
+      this.#map.forEach((value, key) => {
+        this.#emit(CacheEvent.Removal, key, value);
+      });
+    }
+
     this.#map.clear();
+    this.#emit(CacheEvent.Empty);
   }
 
   /**
@@ -254,8 +287,58 @@ class LRUCache<K, V> {
     this.#capacity = capacity;
 
     while (this.size > this.capacity) {
-      this.#map.delete(this.first!);
+      const key = this.first!;
+      this.#emit(CacheEvent.Eviction, key, this.#map.get(key));
+      this.#map.delete(key);
     }
+  }
+
+  /**
+   * Registers an event handler for the specified cache event
+   *
+   * @param {CacheEvent} event - The cache event to register the handler for
+   * @param {CacheEventHandler<K, V>} callback - The event handler to register
+   *
+   * @returns {CacheEventCallback} - An object with an unregister method to
+   * unregister the event handler
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2);
+   * const { unregister } = cache.on(CacheEvent.Insertion, (event, item) => {
+   *  console.log(event, item);
+   * });
+   * cache.put("a", 1); // "insertion" { key: "a", value: 1 }
+   * unregister();
+   * cache.put("b", 2); // (no output)
+   */
+  on(event: CacheEvent, callback: CacheEventHandler<K, V>): CacheEventCallback {
+    if (!this.#eventHandlers[event]) {
+      throw new Error(`Invalid event: ${event}`);
+    }
+
+    this.#eventHandlers[event].push(callback);
+
+    const unregister = () => {
+      this.#eventHandlers[event] = this.#eventHandlers[event].filter(
+        (cb) => cb !== callback,
+      );
+    };
+
+    return { unregister };
+  }
+
+  /**
+   * Emits a cache event to all registered event handlers
+   *
+   * @private
+   * @param {CacheEvent} event - The cache event to emit
+   * @param {K} key - The key associated with the event
+   * @param {V} value - The value associated with the event
+   */
+  #emit(event: CacheEvent, key?: K, value?: V): void {
+    this.#eventHandlers[event].forEach((handler) => {
+      handler(event, key && value ? { key, value } : undefined);
+    });
   }
 
   /**
@@ -360,11 +443,53 @@ class LRUCache<K, V> {
  * @property {number} evictionRate - Eviction Rate = (Number of Evictions) / (Total Number of Cache Accesses)
  * @property {number} effectiveness - LRU Policy Effectiveness = (Number of LRU-Based Evictions) / (Total Number of Cache Hits)
  */
-type LRUCacheStats = {
+export type LRUCacheStats = {
   hitRate: number;
   missRate: number;
   evictionRate: number;
   effectiveness: number;
 };
+
+/**
+ * The cache event
+ *
+ * @enum {string}
+ *
+ * @property {string} Insertion - The event that occurs when a key-value pair is inserted into the cache
+ * @property {string} Eviction - The event that occurs when a key-value pair is evicted from the cache
+ * @property {string} Removal - The event that occurs when a key-value pair is removed from the cache
+ * @property {string} Full - The event that occurs when the cache becomes full
+ * @property {string} Empty - The event that occurs when the cache becomes empty
+ */
+export enum CacheEvent {
+  Insertion = "insertion",
+  Eviction = "eviction",
+  Removal = "removal",
+  Full = "full",
+  Empty = "empty",
+}
+
+/**
+ * The event callback
+ *
+ * @property {Function} unregister - The function to unregister the event handler
+ */
+export type CacheEventCallback = {
+  unregister: () => void;
+};
+
+/**
+ * The event handler
+ *
+ * @template K - The key type
+ * @template V - The value type
+ *
+ * @param {CacheEvent} event - The cache event
+ * @param {{ key: K; value: V }} [item] - The key-value pair associated with the event
+ */
+export type CacheEventHandler<K, V> = (
+  event: CacheEvent,
+  item?: { key: K; value: V },
+) => void;
 
 export default LRUCache;

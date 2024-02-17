@@ -5,6 +5,9 @@
  * @template K - The key type
  * @template V - The value type
  *
+ * @param {number} capacity - The maximum number of items the cache can hold
+ * @param {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
+ *
  * @method get - Gets the value associated with the key
  * @method put - Puts the key-value pair into the cache
  * @method peek - Gets the value associated with the key without updating the cache
@@ -14,15 +17,21 @@
  * @method clearStats - Clears the cache's internal stats
  * @method resize - Resizes the cache
  * @method on - Registers an event handler for the specified cache event
+ * @method persist - Persists the cache
+ * @method restore - Restores the cache
  *
  * @getter first - Gets the first key in the cache
  * @getter last - Gets the last key in the cache
  * @getter size - Gets the number of items in the cache
  * @getter capacity - Gets the maximum number of items the cache can hold
  * @getter stats - Gets the cache's internal stats
+ * @getter persistence - Gets the cache's persistence
+ *
+ * @setter persistence - Sets the cache's persistence
  *
  * @throws {Error} - If capacity is less than 1
  * @throws {Error} - If event being registered is invalid
+ * @throws {Error} - If persistence is not set
  *
  * @example
  * const cache = new LRUCache<string, number>(2);
@@ -77,9 +86,16 @@ class LRUCache<K, V> {
   };
 
   /**
+   * @private
+   * @type {LRUCachePersistence<K, V> | undefined} - The cache's persistence
+   */
+  #persistence?: LRUCachePersistence<K, V>;
+
+  /**
    * Creates a new LRUCache
    *
    * @param {number} capacity - The maximum number of items the cache can hold
+   * @param {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
    *
    * @throws {Error} - If capacity is less than 1
    *
@@ -87,13 +103,14 @@ class LRUCache<K, V> {
    * const cache = new LRUCache<string, number>(2);
    * cache.capacity; // 2
    */
-  constructor(capacity: number) {
+  constructor(capacity: number, persistence?: LRUCachePersistence<K, V>) {
     if (capacity < 1) {
       throw new Error("Capacity must be greater than 0");
     }
 
     this.#capacity = capacity;
     this.#map = new Map();
+    this.#persistence = persistence;
   }
 
   /**
@@ -115,6 +132,10 @@ class LRUCache<K, V> {
     if (value) {
       this.#map.delete(key);
       this.#map.set(key, value);
+
+      if (this.#persistence?.isAuto) {
+        this.persist();
+      }
 
       this.#stats.hit += 1;
     } else {
@@ -154,6 +175,10 @@ class LRUCache<K, V> {
 
     this.#map.set(key, value);
     this.#emit(CacheEvent.Insertion, key, value);
+
+    if (this.#persistence?.isAuto) {
+      this.persist();
+    }
 
     if (this.size === this.capacity) {
       this.#emit(CacheEvent.Full);
@@ -214,6 +239,10 @@ class LRUCache<K, V> {
     this.#emit(CacheEvent.Removal, key, this.#map.get(key));
     this.#map.delete(key);
 
+    if (this.#persistence?.isAuto) {
+      this.persist();
+    }
+
     if (this.size === 0) {
       this.#emit(CacheEvent.Empty);
     }
@@ -240,6 +269,10 @@ class LRUCache<K, V> {
 
     this.#map.clear();
     this.#emit(CacheEvent.Empty);
+
+    if (this.#persistence?.isAuto) {
+      this.persist();
+    }
   }
 
   /**
@@ -291,6 +324,10 @@ class LRUCache<K, V> {
       this.#emit(CacheEvent.Eviction, key, this.#map.get(key));
       this.#map.delete(key);
     }
+
+    if (this.#persistence?.isAuto) {
+      this.persist();
+    }
   }
 
   /**
@@ -339,6 +376,50 @@ class LRUCache<K, V> {
     this.#eventHandlers[event].forEach((handler) => {
       handler(event, key && value ? { key, value } : undefined);
     });
+  }
+
+  /**
+   * Persists the cache
+   *
+   * @throws {Error} - If persistence is not set
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2);
+   * cache.put("a", 1);
+   * cache.put("b", 2);
+   * cache.persist();
+   * const persistenceKey = cache.persistence.key;
+   */
+  persist(): void {
+    if (!this.#persistence) {
+      throw new Error("Persistence is not set");
+    }
+    this.#persistence.persist(this.#map);
+  }
+
+  /**
+   * Restores the cache
+   *
+   * @throws {Error} - If persistence is not set
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2);
+   * cache.put("a", 1);
+   * cache.put("b", 2);
+   * cache.persist();
+   * const persistenceKey = cache.persistence.key;
+   * ...
+   * const persistence = new LRUCachePersistence<string, number>(persistenceKey);
+   * const cache = new LRUCache<string, number>(2, persistence);
+   * cache.restore();
+   * cache.get("a"); // 1
+   * cache.get("b"); // 2
+   */
+  restore(): void {
+    if (!this.#persistence) {
+      throw new Error("Persistence is not set");
+    }
+    this.#map = this.#persistence.restore();
   }
 
   /**
@@ -433,6 +514,35 @@ class LRUCache<K, V> {
       effectiveness,
     };
   }
+
+  /**
+   * Gets the cache's persistence
+   *
+   * @returns {LRUCachePersistence<K,V> | undefined} - The cache's persistence
+   *
+   * @example
+   * cache.persistence = new LRUCachePersistence<string, number>("my-cache");
+   * const cache = new LRUCache<string, number>(2, persistence);
+   * cache.persistence.key; // "my-cache"
+   * cache.persistence.isAuto; // false
+   */
+  get persistence(): LRUCachePersistence<K, V> | undefined {
+    return this.#persistence;
+  }
+
+  /**
+   * Sets the cache's persistence
+   *
+   * @param {LRUCachePersistence<K, V> | undefined} persistence - The cache's persistence
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2);
+   * cache.persistence = new LRUCachePersistence<string, number>("my-cache");
+   * cache.persistence.key; // "my-cache"
+   */
+  set persistence(persistence: LRUCachePersistence<K, V> | undefined) {
+    this.#persistence = persistence;
+  }
 }
 
 /**
@@ -491,5 +601,141 @@ export type CacheEventHandler<K, V> = (
   event: CacheEvent,
   item?: { key: K; value: V },
 ) => void;
+
+/**
+ * An LRU cache persistence implementation
+ *
+ * @template K - The key type
+ * @template V - The value type
+ *
+ * @param {string} [cacheKey] - The cache key
+ * @param {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
+ * @param {{ persist: (cache: Map<K, V>) => void; restore: () => Map<K, V> }} [logic] - The persistence logic
+ *
+ * @getter key - Gets the cache key
+ * @getter isAuto - Gets whether the cache is auto-persisted (persisted on every change)
+ *
+ * @method persist - Persists the cache
+ * @method restore - Restores the cache
+ *
+ * @example
+ * const persistence = new LRUCachePersistence<string, number>("my-cache");
+ * const cache = new Map<string, number>([[ "a", 1 ], [ "b", 2 ]]);
+ * persistence.persist(cache);
+ * const restoredCache = persistence.restore();
+ * console.log(restoredCache); // Map { "a" => 1, "b" => 2 }
+ */
+export class LRUCachePersistence<K, V> {
+  /**
+   * @private
+   * @type {string} - The cache key
+   */
+  #cacheKey: string;
+
+  /**
+   * @private
+   * @type {boolean} - Whether the cache is auto-persisted (persisted on every change)
+   */
+  #autoPersist: boolean;
+
+  /**
+   * Persists the cache
+   *
+   * @param {Map<K, V>} cache - The cache to persist
+   */
+  persist: (cache: Map<K, V>) => void = (cache) => {
+    localStorage.setItem(
+      this.#cacheKey,
+      JSON.stringify(
+        Array.from(cache.entries()).map(([k, v]) => ({ key: k, value: v })),
+      ),
+    );
+  };
+
+  /**
+   * Restores the cache
+   *
+   * @returns {Map<K, V>}
+   */
+  restore: () => Map<K, V> = () => {
+    const data = localStorage.getItem(this.#cacheKey);
+    if (data) {
+      return new Map(
+        JSON.parse(data).map(({ key, value }: { key: K; value: V }) => [
+          key,
+          value,
+        ]),
+      );
+    }
+    return new Map();
+  };
+
+  /**
+   * Creates a new LRUCachePersistence
+   *
+   * @param {string} [cacheKey] - The cache key
+   * @param {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
+   * @param {{ persist: (cache: Map<K, V>) => void; restore: () => Map<K, V> }} [logic] - The persistence logic
+   *
+   * @example
+   * const persistence = new LRUCachePersistence<string, number>("my-cache");
+   */
+  constructor(
+    cacheKey: string = uuidv4(),
+    autoPersist: boolean = false,
+    logic?: { persist: (cache: Map<K, V>) => void; restore: () => Map<K, V> },
+  ) {
+    this.#cacheKey = cacheKey;
+    this.#autoPersist = autoPersist;
+
+    if (logic) {
+      this.persist = logic.persist;
+      this.restore = logic.restore;
+    }
+  }
+
+  /**
+   * Gets the cache key
+   *
+   * @returns {string}
+   *
+   * @example
+   * const persistence = new LRUCachePersistence<string, number>("my-cache");
+   * console.log(persistence.key); // "my-cache"
+   */
+  get key(): string {
+    return this.#cacheKey;
+  }
+
+  /**
+   * Gets whether the cache is auto-persisted (persisted on every change)
+   *
+   * @returns {boolean}
+   *
+   * @example
+   * const persistence = new LRUCachePersistence<string, number>("my-cache");
+   * console.log(persistence.isAuto); // false
+   */
+  get isAuto(): boolean {
+    return this.#autoPersist;
+  }
+}
+
+/**
+ * A UUIDv4 generator
+ * @returns {string} - A UUIDv4 string
+ *
+ * @example
+ * const uuid = uuidv4();
+ * console.log(uuid); // "110ec58a-a0f2-4ac4-8393-c866d813b8d1"
+ */
+function uuidv4(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+export { uuidv4 as __test__uuidv4 };
 
 export default LRUCache;

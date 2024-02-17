@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import LRUCache, { CacheEvent } from "../src";
+import LRUCache, {
+  CacheEvent,
+  LRUCachePersistence,
+  __test__uuidv4 as uuidv4,
+} from "../src";
+
+const localStorageMock = {
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  clear: vi.fn(),
+};
+vi.stubGlobal("localStorage", localStorageMock);
 
 describe("LRUCache", () => {
   describe("constructor", () => {
@@ -141,10 +152,50 @@ describe("LRUCache", () => {
         expect(cache.stats.effectiveness).toBe(0.5);
       });
     });
+    describe("persistence", () => {
+      it("should return undefined if persistence is not set", () => {
+        const cache = new LRUCache<string, number>(1);
+        expect(cache.persistence).toBe(undefined);
+      });
+      it("should return the persistence", () => {
+        const persistence = new LRUCachePersistence<string, number>("foo");
+        const cache = new LRUCache<string, number>(1, persistence);
+        expect(cache.persistence).toBe(persistence);
+      });
+    });
+  });
+
+  describe("setters", () => {
+    describe("persistence", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
+      it("should set the persistence", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          undefined,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(1);
+        expect(() => cache.persist()).toThrow("Persistence is not set");
+        expect(logic.persist).not.toHaveBeenCalled();
+        cache.persistence = persistence;
+        cache.persist();
+        expect(logic.persist).toHaveBeenCalled();
+      });
+    });
   });
 
   describe("methods", () => {
     describe("get", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
+
       it("should return undefined if key does not exist", () => {
         const cache = new LRUCache<string, number>(1);
         expect(cache.get("a")).toBe(undefined);
@@ -173,9 +224,46 @@ describe("LRUCache", () => {
         cache.get("c");
         expect(cache.first).toBe("a");
       });
+
+      it("should persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          true,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(1);
+        cache.put("a", 1);
+        cache.persistence = persistence;
+        cache.get("a");
+        expect(logic.persist).toHaveBeenCalledWith(new Map([["a", 1]]));
+      });
+
+      it("should not persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          false,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(1);
+        cache.put("a", 1);
+        cache.persistence = persistence;
+        cache.get("a");
+        expect(logic.persist).not.toHaveBeenCalledWith();
+      });
     });
 
     describe("put", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
       it("should add a new key/value pair to the cache", () => {
         const cache = new LRUCache<string, number>(1);
         cache.put("a", 1);
@@ -207,6 +295,36 @@ describe("LRUCache", () => {
         cache.put("a", 1);
         cache.put("b", 2);
         expect(cache.get("a")).toBe(undefined);
+      });
+
+      it("should persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          true,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(1, persistence);
+        cache.put("a", 1);
+        expect(logic.persist).toHaveBeenCalledWith(new Map([["a", 1]]));
+      });
+
+      it("should not persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          false,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(1, persistence);
+        cache.put("a", 1);
+        expect(logic.persist).not.toHaveBeenCalledWith();
       });
     });
 
@@ -255,6 +373,9 @@ describe("LRUCache", () => {
     });
 
     describe("remove", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
       it("should remove the key from the cache", () => {
         const cache = new LRUCache<string, number>(1);
         cache.put("a", 1);
@@ -269,9 +390,47 @@ describe("LRUCache", () => {
         const cache = new LRUCache<string, number>(1);
         expect(() => cache.remove("a")).not.toThrow();
       });
+
+      it("should persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          true,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.persistence = persistence;
+        cache.remove("a");
+        expect(logic.persist).toHaveBeenCalledWith(new Map([["b", 2]]));
+      });
+
+      it("should not persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          false,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(1);
+        cache.put("a", 1);
+        cache.persistence = persistence;
+        cache.remove("a");
+        expect(logic.persist).not.toHaveBeenCalledWith();
+      });
     });
 
     describe("clear", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
       it("should clear the cache", () => {
         const cache = new LRUCache<string, number>(2);
         cache.put("a", 1);
@@ -282,6 +441,40 @@ describe("LRUCache", () => {
         expect(cache.has("b")).toBe(false);
         expect(cache.size).toBe(0);
         expect(cache.capacity).toBe(2);
+      });
+
+      it("should persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          true,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(1);
+        cache.put("a", 1);
+        cache.persistence = persistence;
+        cache.clear();
+        expect(logic.persist).toHaveBeenCalledWith(new Map());
+      });
+
+      it("should not persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          false,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(1);
+        cache.put("a", 1);
+        cache.persistence = persistence;
+        cache.clear();
+        expect(logic.persist).not.toHaveBeenCalledWith();
       });
     });
 
@@ -309,6 +502,9 @@ describe("LRUCache", () => {
     });
 
     describe("resize", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
       it("should update the capacity of the cache", () => {
         const cache = new LRUCache<string, number>(1);
         expect(cache.capacity).toBe(1);
@@ -339,6 +535,40 @@ describe("LRUCache", () => {
         expect(cache.has("a")).toBe(true);
         expect(cache.has("b")).toBe(true);
       });
+      it("should persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          true,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.persistence = persistence;
+        cache.resize(1);
+        expect(logic.persist).toHaveBeenCalledWith(new Map([["b", 2]]));
+      });
+      it("should not persist the cache if persistence is set", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          false,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.persistence = persistence;
+        cache.resize(1);
+        expect(logic.persist).not.toHaveBeenCalledWith();
+      });
     });
     describe("on", () => {
       beforeEach(() => {
@@ -356,6 +586,22 @@ describe("LRUCache", () => {
         cache.on(CacheEvent.Insertion, listener);
         cache.put("a", 1);
         expect(listener).toHaveBeenCalledWith(CacheEvent.Insertion, {
+          key: "a",
+          value: 1,
+        });
+      });
+      it("should add multiple event listeners", () => {
+        const cache = new LRUCache<string, number>(1);
+        const listener1 = vi.fn();
+        const listener2 = vi.fn();
+        cache.on(CacheEvent.Insertion, listener1);
+        cache.on(CacheEvent.Insertion, listener2);
+        cache.put("a", 1);
+        expect(listener1).toHaveBeenCalledWith(CacheEvent.Insertion, {
+          key: "a",
+          value: 1,
+        });
+        expect(listener2).toHaveBeenCalledWith(CacheEvent.Insertion, {
           key: "a",
           value: 1,
         });
@@ -467,5 +713,218 @@ describe("LRUCache", () => {
         expect(listener).toHaveBeenCalledOnce();
       });
     });
+    describe("persist", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
+      it("should throw an error if persistence is not set", () => {
+        const cache = new LRUCache<string, number>(1);
+        expect(() => cache.persist()).toThrow("Persistence is not set");
+      });
+      it("should persist the cache", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          undefined,
+          logic,
+        );
+        const cache = new LRUCache<string, number>(2, persistence);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        cache.persist();
+        expect(persistence.persist).toHaveBeenCalledWith(
+          new Map([
+            ["a", 1],
+            ["b", 2],
+          ]),
+        );
+      });
+    });
+    describe("restore", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
+      it("should throw an error if persistence is not set", () => {
+        const cache = new LRUCache<string, number>(1);
+        expect(() => cache.restore()).toThrow("Persistence is not set");
+      });
+      it("should restore the cache", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          undefined,
+          logic,
+        );
+        logic.restore.mockReturnValue(
+          new Map([
+            ["a", 1],
+            ["b", 2],
+          ]),
+        );
+        const cache = new LRUCache<string, number>(2, persistence);
+        cache.restore();
+        expect(persistence.restore).toHaveBeenCalled();
+        expect(cache.has("a")).toBe(true);
+        expect(cache.has("b")).toBe(true);
+      });
+      it("should override the existing cache", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          undefined,
+          logic,
+        );
+        logic.restore.mockReturnValue(
+          new Map([
+            ["a", 1],
+            ["b", 2],
+          ]),
+        );
+        const cache = new LRUCache<string, number>(2, persistence);
+        cache.put("c", 3);
+        cache.restore();
+        expect(cache.has("a")).toBe(true);
+        expect(cache.has("b")).toBe(true);
+        expect(cache.has("c")).toBe(false);
+      });
+      it("should restore an empty map if no data", () => {
+        const persistence = new LRUCachePersistence<string, number>("foo");
+        localStorageMock.getItem.mockReturnValue(null);
+        const cache = new LRUCache<string, number>(2, persistence);
+        cache.restore();
+        expect(cache.size).toBe(0);
+      });
+    });
+  });
+});
+
+describe("LRUCachePersistence", () => {
+  describe("constructor", () => {
+    it("should be a class", () => {
+      expect(typeof LRUCachePersistence).toBe("function");
+    });
+    it("should be instantiable", () => {
+      const persistence = new LRUCachePersistence<string, number>();
+      expect(persistence).toBeInstanceOf(LRUCachePersistence);
+    });
+    it("should set values by default", () => {
+      const persistence = new LRUCachePersistence<string, number>();
+      expect(persistence.key).toBeDefined();
+      expect(persistence.isAuto).toBe(false);
+      expect(persistence.persist).toBeDefined();
+      expect(persistence.restore).toBeDefined();
+    });
+  });
+
+  describe("methods", () => {
+    describe("persist", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
+      it("should default to localStorage", () => {
+        const persistence = new LRUCachePersistence<string, number>();
+        const cache = new Map<string, number>();
+        cache.set("a", 1);
+        persistence.persist(cache);
+
+        expect(localStorageMock.setItem).toHaveBeenCalledWith(
+          persistence.key,
+          JSON.stringify([{ key: "a", value: 1 }]),
+        );
+      });
+      it("should use the provided storage", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          undefined,
+          logic,
+        );
+        const cache = new Map<string, number>();
+        cache.set("a", 1);
+        persistence.persist(cache);
+
+        expect(logic.persist).toHaveBeenCalledWith(cache);
+      });
+    });
+    describe("restore", () => {
+      beforeEach(() => {
+        vi.restoreAllMocks();
+      });
+      it("should default to localStorage", () => {
+        const persistence = new LRUCachePersistence<string, number>();
+        localStorageMock.getItem.mockReturnValue(
+          JSON.stringify([{ key: "a", value: 1 }]),
+        );
+        const cache = persistence.restore();
+
+        expect(localStorageMock.getItem).toHaveBeenCalledWith(persistence.key);
+        expect(cache.get("a")).toBe(1);
+      });
+      it("should use the provided storage", () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          undefined,
+          logic,
+        );
+        logic.restore.mockReturnValue(new Map([["a", 1]]));
+        const cache = persistence.restore();
+
+        expect(logic.restore).toHaveBeenCalled();
+        expect(cache.get("a")).toBe(1);
+      });
+    });
+  });
+
+  describe("getters", () => {
+    describe("key", () => {
+      it("should return the key", () => {
+        const persistence = new LRUCachePersistence<string, number>("foo");
+        expect(persistence.key).toBe("foo");
+      });
+    });
+
+    describe("isAuto", () => {
+      it("should return false if not set", () => {
+        const persistence = new LRUCachePersistence<string, number>("foo");
+        expect(persistence.isAuto).toBe(false);
+      });
+      it.each([
+        [true, true],
+        [false, false],
+      ])("should return the value if set", (input, expected) => {
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          input,
+        );
+        expect(persistence.isAuto).toBe(expected);
+      });
+    });
+  });
+});
+
+describe("uuidv4", () => {
+  it("should return a string", () => {
+    expect(typeof uuidv4()).toBe("string");
+  });
+  it("should return a unique string", () => {
+    const uuid1 = uuidv4();
+    const uuid2 = uuidv4();
+    expect(uuid1).not.toBe(uuid2);
   });
 });

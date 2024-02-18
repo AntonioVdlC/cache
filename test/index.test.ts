@@ -195,18 +195,15 @@ describe("LRUCache", () => {
       beforeEach(() => {
         vi.restoreAllMocks();
       });
-
       it("should return undefined if key does not exist", () => {
         const cache = new LRUCache<string, number>(1);
         expect(cache.get("a")).toBe(undefined);
       });
-
       it("should return the value if key exists", () => {
         const cache = new LRUCache<string, number>(1);
         cache.put("a", 1);
         expect(cache.get("a")).toBe(1);
       });
-
       it("should move the key to the end of the cache", () => {
         const cache = new LRUCache<string, number>(2);
         cache.put("a", 1);
@@ -215,7 +212,6 @@ describe("LRUCache", () => {
         cache.get("a");
         expect(cache.last).toBe("a");
       });
-
       it("shouldn't move the key if element is not in the cache", () => {
         const cache = new LRUCache<string, number>(2);
         cache.put("a", 1);
@@ -224,7 +220,6 @@ describe("LRUCache", () => {
         cache.get("c");
         expect(cache.first).toBe("a");
       });
-
       it("should persist the cache if persistence is set", () => {
         const logic = {
           persist: vi.fn(),
@@ -241,7 +236,6 @@ describe("LRUCache", () => {
         cache.get("a");
         expect(logic.persist).toHaveBeenCalledWith(new Map([["a", 1]]));
       });
-
       it("should not persist the cache if persistence is set", () => {
         const logic = {
           persist: vi.fn(),
@@ -270,7 +264,6 @@ describe("LRUCache", () => {
         expect(cache.size).toBe(1);
         expect(cache.get("a")).toBe(1);
       });
-
       it("should update the value of an existing key", () => {
         const cache = new LRUCache<string, number>(1);
         cache.put("a", 1);
@@ -280,7 +273,6 @@ describe("LRUCache", () => {
         expect(cache.size).toBe(1);
         expect(cache.get("a")).toBe(2);
       });
-
       it("should move the key to the end of the cache", () => {
         const cache = new LRUCache<string, number>(2);
         cache.put("a", 1);
@@ -289,14 +281,12 @@ describe("LRUCache", () => {
         cache.put("a", 1);
         expect(cache.last).toBe("a");
       });
-
       it("should remove the least recently used key if cache is full", () => {
         const cache = new LRUCache<string, number>(1);
         cache.put("a", 1);
         cache.put("b", 2);
         expect(cache.get("a")).toBe(undefined);
       });
-
       it("should persist the cache if persistence is set", () => {
         const logic = {
           persist: vi.fn(),
@@ -311,7 +301,6 @@ describe("LRUCache", () => {
         cache.put("a", 1);
         expect(logic.persist).toHaveBeenCalledWith(new Map([["a", 1]]));
       });
-
       it("should not persist the cache if persistence is set", () => {
         const logic = {
           persist: vi.fn(),
@@ -333,13 +322,11 @@ describe("LRUCache", () => {
         const cache = new LRUCache<string, number>(1);
         expect(cache.peek("a")).toBe(undefined);
       });
-
       it("should return the value if key exists", () => {
         const cache = new LRUCache<string, number>(1);
         cache.put("a", 1);
         expect(cache.peek("a")).toBe(1);
       });
-
       it("should not move the key to the end of the cache", () => {
         const cache = new LRUCache<string, number>(2);
         cache.put("a", 1);
@@ -355,13 +342,11 @@ describe("LRUCache", () => {
         const cache = new LRUCache<string, number>(1);
         expect(cache.has("a")).toBe(false);
       });
-
       it("should return true if key exists", () => {
         const cache = new LRUCache<string, number>(1);
         cache.put("a", 1);
         expect(cache.has("a")).toBe(true);
       });
-
       it("should not move the key to the end of the cache", () => {
         const cache = new LRUCache<string, number>(2);
         cache.put("a", 1);
@@ -385,12 +370,10 @@ describe("LRUCache", () => {
         expect(cache.has("a")).toBe(false);
         expect(cache.size).toBe(0);
       });
-
       it("should not throw an error if key does not exist", () => {
         const cache = new LRUCache<string, number>(1);
         expect(() => cache.remove("a")).not.toThrow();
       });
-
       it("should persist the cache if persistence is set", () => {
         const logic = {
           persist: vi.fn(),
@@ -408,7 +391,6 @@ describe("LRUCache", () => {
         cache.remove("a");
         expect(logic.persist).toHaveBeenCalledWith(new Map([["b", 2]]));
       });
-
       it("should not persist the cache if persistence is set", () => {
         const logic = {
           persist: vi.fn(),
@@ -442,7 +424,6 @@ describe("LRUCache", () => {
         expect(cache.size).toBe(0);
         expect(cache.capacity).toBe(2);
       });
-
       it("should persist the cache if persistence is set", () => {
         const logic = {
           persist: vi.fn(),
@@ -459,7 +440,6 @@ describe("LRUCache", () => {
         cache.clear();
         expect(logic.persist).toHaveBeenCalledWith(new Map());
       });
-
       it("should not persist the cache if persistence is set", () => {
         const logic = {
           persist: vi.fn(),
@@ -570,6 +550,7 @@ describe("LRUCache", () => {
         expect(logic.persist).not.toHaveBeenCalledWith();
       });
     });
+
     describe("on", () => {
       beforeEach(() => {
         vi.restoreAllMocks();
@@ -713,6 +694,7 @@ describe("LRUCache", () => {
         expect(listener).toHaveBeenCalledOnce();
       });
     });
+
     describe("persist", () => {
       beforeEach(() => {
         vi.restoreAllMocks();
@@ -743,6 +725,7 @@ describe("LRUCache", () => {
         );
       });
     });
+
     describe("restore", () => {
       beforeEach(() => {
         vi.restoreAllMocks();
@@ -802,6 +785,36 @@ describe("LRUCache", () => {
         const cache = new LRUCache<string, number>(2, persistence);
         cache.restore();
         expect(cache.size).toBe(0);
+      });
+    });
+
+    describe("toMap", () => {
+      it("should return a map of the cache", () => {
+        const cache = new LRUCache<string, number>(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        expect(cache.toMap()).toStrictEqual(
+          new Map([
+            ["a", 1],
+            ["b", 2],
+          ]),
+        );
+      });
+      it("should return an empty map if cache is empty", () => {
+        const cache = new LRUCache<string, number>(2);
+        expect(cache.toMap()).toStrictEqual(new Map());
+      });
+      it("shouldn't update the cache if the map is modified", () => {
+        const cache = new LRUCache<string, number>(2);
+        const map = cache.toMap();
+        map.set("a", 1);
+        expect(cache.has("a")).toBe(false);
+      });
+      it("shouldn't update the map if the cache is modified", () => {
+        const cache = new LRUCache<string, number>(2);
+        const map = cache.toMap();
+        cache.put("a", 1);
+        expect(map.has("a")).toBe(false);
       });
     });
   });

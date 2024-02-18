@@ -19,6 +19,7 @@
  * @method on - Registers an event handler for the specified cache event
  * @method persist - Persists the cache
  * @method restore - Restores the cache
+ * @method toMap - Converts the cache to a Map
  *
  * @getter first - Gets the first key in the cache
  * @getter last - Gets the last key in the cache
@@ -420,6 +421,21 @@ class LRUCache<K, V> {
       throw new Error("Persistence is not set");
     }
     this.#map = this.#persistence.restore();
+  }
+
+  /**
+   * Converts the cache to a Map
+   *
+   * @returns {Map<K, V>} - The cache as a Map
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2);
+   * cache.put("a", 1);
+   * cache.put("b", 2);
+   * cache.toMap(); // Map { "a" => 1, "b" => 2 }
+   */
+  toMap(): Map<K, V> {
+    return new Map(this.#map);
   }
 
   /**

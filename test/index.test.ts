@@ -159,7 +159,7 @@ describe("LRUCache", () => {
       });
       it("should return the persistence", () => {
         const persistence = new LRUCachePersistence<string, number>("foo");
-        const cache = new LRUCache<string, number>(1, persistence);
+        const cache = new LRUCache<string, number>(1, { persistence });
         expect(cache.persistence).toBe(persistence);
       });
     });
@@ -171,9 +171,12 @@ describe("LRUCache", () => {
       it.each([
         [true, true],
         [false, false],
-      ])("should return the value if set", (input, expected) => {
+      ])("should return the value if set", (autoPersist, expected) => {
         const persistence = new LRUCachePersistence<string, number>("foo");
-        const cache = new LRUCache<string, number>(1, persistence, input);
+        const cache = new LRUCache<string, number>(1, {
+          persistence,
+          autoPersist,
+        });
         expect(cache.isAutoPersist).toBe(expected);
       });
     });
@@ -319,7 +322,10 @@ describe("LRUCache", () => {
           "foo",
           logic,
         );
-        const cache = new LRUCache<string, number>(1, persistence, true);
+        const cache = new LRUCache<string, number>(1, {
+          persistence,
+          autoPersist: true,
+        });
         cache.put("a", 1);
         expect(logic.persist).toHaveBeenCalledWith(new Map([["a", 1]]));
       });
@@ -332,7 +338,7 @@ describe("LRUCache", () => {
           "foo",
           logic,
         );
-        const cache = new LRUCache<string, number>(1, persistence);
+        const cache = new LRUCache<string, number>(1, { persistence });
         cache.put("a", 1);
         expect(logic.persist).not.toHaveBeenCalledWith();
       });
@@ -730,7 +736,7 @@ describe("LRUCache", () => {
           "foo",
           logic,
         );
-        const cache = new LRUCache<string, number>(2, persistence);
+        const cache = new LRUCache<string, number>(2, { persistence });
         cache.put("a", 1);
         cache.put("b", 2);
         cache.persist();
@@ -766,7 +772,7 @@ describe("LRUCache", () => {
             ["b", 2],
           ]),
         );
-        const cache = new LRUCache<string, number>(2, persistence);
+        const cache = new LRUCache<string, number>(2, { persistence });
         cache.restore();
         expect(persistence.restore).toHaveBeenCalled();
         expect(cache.has("a")).toBe(true);
@@ -787,7 +793,7 @@ describe("LRUCache", () => {
             ["b", 2],
           ]),
         );
-        const cache = new LRUCache<string, number>(2, persistence);
+        const cache = new LRUCache<string, number>(2, { persistence });
         cache.put("c", 3);
         cache.restore();
         expect(cache.has("a")).toBe(true);
@@ -797,7 +803,7 @@ describe("LRUCache", () => {
       it("should restore an empty map if no data", () => {
         const persistence = new LRUCachePersistence<string, number>("foo");
         localStorageMock.getItem.mockReturnValue(null);
-        const cache = new LRUCache<string, number>(2, persistence);
+        const cache = new LRUCache<string, number>(2, { persistence });
         cache.restore();
         expect(cache.size).toBe(0);
       });

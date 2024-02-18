@@ -6,8 +6,9 @@
  * @template V - The value type
  *
  * @param {number} capacity - The maximum number of items the cache can hold
- * @param {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
- * @param {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
+ * @param {Object} [options] - The cache's persistence and auto-persist settings
+ * @property {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
+ * @property {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
  *
  * @method get - Gets the value associated with the key
  * @method put - Puts the key-value pair into the cache
@@ -98,13 +99,15 @@ class LRUCache<K, V> {
    * @private
    * @type {boolean} - Whether the cache is auto-persisted (persisted on every change)
    */
-  #autoPersist: boolean;
+  #autoPersist?: boolean;
 
   /**
    * Creates a new LRUCache
    *
    * @param {number} capacity - The maximum number of items the cache can hold
-   * @param {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
+   * @param {Object} [options] - The cache's persistence and auto-persist settings
+   * @property {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
+   * @property {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
    *
    * @throws {Error} - If capacity is less than 1
    *
@@ -114,8 +117,10 @@ class LRUCache<K, V> {
    */
   constructor(
     capacity: number,
-    persistence?: LRUCachePersistence<K, V>,
-    autoPersist: boolean = false,
+    options: {
+      persistence?: LRUCachePersistence<K, V>;
+      autoPersist?: boolean;
+    } = {},
   ) {
     if (capacity < 1) {
       throw new Error("Capacity must be greater than 0");
@@ -123,8 +128,9 @@ class LRUCache<K, V> {
 
     this.#capacity = capacity;
     this.#map = new Map();
-    this.#persistence = persistence;
-    this.#autoPersist = autoPersist;
+
+    this.#persistence = options.persistence;
+    this.#autoPersist = options.autoPersist;
   }
 
   /**
@@ -569,7 +575,7 @@ class LRUCache<K, V> {
    * console.log(persistence.isAuto); // false
    */
   get isAutoPersist(): boolean {
-    return this.#autoPersist;
+    return Boolean(this.#autoPersist);
   }
 
   /**

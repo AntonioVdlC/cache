@@ -9,6 +9,7 @@
  * @param {Object} [options] - The cache's persistence and auto-persist settings
  * @property {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
  * @property {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
+ * @property {number} [ttl] - The default time-to-live (TTL) for cache items (in ms)
  *
  * @method get - Gets the value associated with the key
  * @method put - Puts the key-value pair into the cache
@@ -29,9 +30,12 @@
  * @getter capacity - Gets the maximum number of items the cache can hold
  * @getter stats - Gets the cache's internal stats
  * @getter persistence - Gets the cache's persistence
+ * @getter isAutoPersist - Gets whether the cache is auto-persisted (persisted on every change)
+ * @getter ttl - Gets the default time-to-live (TTL) for cache items (in ms)
  *
  * @setter persistence - Sets the cache's persistence
  * @setter autoPersist - Sets whether the cache is auto-persisted (persisted on every change)
+ * @setter ttl - Sets the default time-to-live (TTL) for cache items (in ms)
  *
  * @throws {Error} - If capacity is less than 1
  * @throws {Error} - If event being registered is invalid
@@ -102,12 +106,26 @@ class LRUCache<K, V> {
   #autoPersist?: boolean;
 
   /**
+   * @private
+   * @type {number} - The default time-to-live (TTL) for cache items (in ms)
+   */
+  #ttl?: number;
+
+  /**
+   * @private
+   * @type {Map<K, number>} - The map that holds the time-to-live (TTL) for
+   * cache items
+   */
+  #ttlMap: Map<K, number>;
+
+  /**
    * Creates a new LRUCache
    *
    * @param {number} capacity - The maximum number of items the cache can hold
    * @param {Object} [options] - The cache's persistence and auto-persist settings
    * @property {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
    * @property {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
+   * @property {number} [ttl] - The default time-to-live (TTL) for cache items (in ms)
    *
    * @throws {Error} - If capacity is less than 1
    *
@@ -120,6 +138,7 @@ class LRUCache<K, V> {
     options: {
       persistence?: LRUCachePersistence<K, V>;
       autoPersist?: boolean;
+      ttl?: number;
     } = {},
   ) {
     if (capacity < 1) {
@@ -131,6 +150,33 @@ class LRUCache<K, V> {
 
     this.#persistence = options.persistence;
     this.#autoPersist = options.autoPersist;
+    this.#ttl = options.ttl;
+    this.#ttlMap = new Map();
+  }
+
+  /**
+   * Evicts the least recently used item from the cache
+   *
+   * @private
+   *
+   * @param {K} key - The key to evict
+   *
+   * @returns {boolean} - True if the key was evicted, false otherwise
+   */
+  #ttlEvict(key: K): boolean {
+    if (this.#ttlMap.has(key)) {
+      const ttl = this.#ttlMap.get(key);
+      if (ttl && Date.now() > ttl) {
+        this.#emit(CacheEvent.Eviction, key, this.#map.get(key));
+        this.#map.delete(key);
+        this.#ttlMap.delete(key);
+        if (this.#autoPersist) {
+          this.persist();
+        }
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -148,10 +194,22 @@ class LRUCache<K, V> {
    * cache.get("b"); // undefined
    */
   get(key: K): V | undefined {
+    this.#stats.access += 1;
+
+    if (this.#ttlEvict(key)) {
+      this.#stats.miss += 1;
+      return undefined;
+    }
+
     const value = this.#map.get(key);
     if (value) {
       this.#map.delete(key);
       this.#map.set(key, value);
+
+      if (this.#ttl) {
+        this.#ttlMap.delete(key);
+        this.#ttlMap.set(key, Date.now() + this.#ttl);
+      }
 
       if (this.#autoPersist) {
         this.persist();
@@ -161,8 +219,6 @@ class LRUCache<K, V> {
     } else {
       this.#stats.miss += 1;
     }
-
-    this.#stats.access += 1;
 
     return value;
   }
@@ -186,14 +242,19 @@ class LRUCache<K, V> {
   put(key: K, value: V): void {
     if (this.#map.has(key)) {
       this.#map.delete(key);
+      this.#ttlMap.delete(key);
     } else if (this.size === this.capacity) {
       const key = this.first!;
       this.#emit(CacheEvent.Eviction, key, this.#map.get(key));
       this.#map.delete(key);
+      this.#ttlMap.delete(key);
       this.#stats.eviction += 1;
     }
 
     this.#map.set(key, value);
+    if (this.#ttl) {
+      this.#ttlMap.set(key, Date.now() + this.#ttl);
+    }
     this.#emit(CacheEvent.Insertion, key, value);
 
     if (this.#autoPersist) {
@@ -220,6 +281,10 @@ class LRUCache<K, V> {
    * cache.peek("c"); // undefined
    */
   peek(key: K): V | undefined {
+    if (this.#ttlEvict(key)) {
+      return undefined;
+    }
+
     return this.#map.get(key);
   }
 
@@ -238,6 +303,10 @@ class LRUCache<K, V> {
    * cache.has("c"); // false
    */
   has(key: K): boolean {
+    if (this.#ttlEvict(key)) {
+      return false;
+    }
+
     return this.#map.has(key);
   }
 
@@ -258,6 +327,7 @@ class LRUCache<K, V> {
   remove(key: K): void {
     this.#emit(CacheEvent.Removal, key, this.#map.get(key));
     this.#map.delete(key);
+    this.#ttlMap.delete(key);
 
     if (this.#autoPersist) {
       this.persist();
@@ -288,6 +358,8 @@ class LRUCache<K, V> {
     }
 
     this.#map.clear();
+    this.#ttlMap.clear();
+
     this.#emit(CacheEvent.Empty);
 
     if (this.#autoPersist) {
@@ -579,6 +651,19 @@ class LRUCache<K, V> {
   }
 
   /**
+   * Gets the default time-to-live (TTL) for cache items (in ms)
+   *
+   * @returns {number | undefined} - The default time-to-live (TTL) for cache items (in ms)
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2, { ttl: 1000 });
+   * cache.ttl; // 1000
+   */
+  get ttl(): number | undefined {
+    return this.#ttl;
+  }
+
+  /**
    * Sets the cache's persistence
    *
    * @param {LRUCachePersistence<K, V> | undefined} persistence - The cache's persistence
@@ -606,6 +691,20 @@ class LRUCache<K, V> {
    */
   set autoPersist(autoPersist: boolean) {
     this.#autoPersist = autoPersist;
+  }
+
+  /**
+   * Sets the default time-to-live (TTL) for cache items (in ms)
+   *
+   * @param {number | undefined} ttl - The default time-to-live (TTL) for cache items (in ms)
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2);
+   * cache.ttl = 1000;
+   * console.log(cache.ttl); // 1000
+   */
+  set ttl(ttl: number | undefined) {
+    this.#ttl = ttl;
   }
 }
 

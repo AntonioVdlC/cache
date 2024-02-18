@@ -13,6 +13,21 @@ const localStorageMock = {
 };
 vi.stubGlobal("localStorage", localStorageMock);
 
+/**
+ * Helper function to create a delay
+ *
+ * @param ms - The number of milliseconds to wait
+ *
+ * @returns A promise that resolves after the specified time
+ *
+ * @example
+ * await _for(1000);
+ * console.log("1 second has passed");
+ */
+function _for(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 describe("LRUCache", () => {
   describe("constructor", () => {
     it("should be a class", () => {
@@ -180,6 +195,16 @@ describe("LRUCache", () => {
         expect(cache.isAutoPersist).toBe(expected);
       });
     });
+    describe("ttl", () => {
+      it("should return undefined if not set", () => {
+        const cache = new LRUCache<string, number>(1);
+        expect(cache.ttl).toBe(undefined);
+      });
+      it("should return the value if set", () => {
+        const cache = new LRUCache<string, number>(1, { ttl: 1000 });
+        expect(cache.ttl).toBe(1000);
+      });
+    });
   });
 
   describe("setters", () => {
@@ -213,6 +238,17 @@ describe("LRUCache", () => {
       it("should default to false", () => {
         const cache = new LRUCache<string, number>(1);
         expect(cache.isAutoPersist).toBe(false);
+      });
+    });
+    describe("ttl", () => {
+      it("should set the value", () => {
+        const cache = new LRUCache<string, number>(1);
+        cache.ttl = 1000;
+        expect(cache.ttl).toBe(1000);
+      });
+      it("should default to undefined", () => {
+        const cache = new LRUCache<string, number>(1);
+        expect(cache.ttl).toBe(undefined);
       });
     });
   });
@@ -837,6 +873,65 @@ describe("LRUCache", () => {
         cache.put("a", 1);
         expect(map.has("a")).toBe(false);
       });
+    });
+  });
+
+  describe("ttl", () => {
+    it("should not automatically remove the key after the specified time", async () => {
+      const cache = new LRUCache<string, number>(1, { ttl: 100 });
+      cache.put("a", 1);
+      expect(cache.has("a")).toBe(true);
+      await _for(100);
+      expect(cache.has("a")).toBe(false);
+    });
+    it("should remove the key after the specified time if accessed", async () => {
+      const cache = new LRUCache<string, number>(1, { ttl: 100 });
+      cache.put("a", 1);
+      expect(cache.has("a")).toBe(true);
+      await _for(50);
+      cache.get("a");
+      await _for(50);
+      expect(cache.has("a")).toBe(true);
+      await _for(100);
+      expect(cache.get("a")).toBe(undefined);
+    });
+    it("should remove the key after the specified time if .peek() is called", async () => {
+      const cache = new LRUCache<string, number>(1, { ttl: 100 });
+      cache.put("a", 1);
+      expect(cache.has("a")).toBe(true);
+      await _for(50);
+      cache.peek("a");
+      await _for(70);
+      // NOTE: peek() doesn't reset the timer
+      expect(cache.peek("a")).toBe(undefined);
+    });
+    it("should remove the key after the specified time if .has() is called", async () => {
+      const cache = new LRUCache<string, number>(1, { ttl: 100 });
+      cache.put("a", 1);
+      expect(cache.has("a")).toBe(true);
+      await _for(50);
+      cache.has("a");
+      await _for(70);
+      // NOTE: has() doesn't reset the timer
+      expect(cache.has("a")).toBe(false);
+    });
+    it("should persist the cache if auto-persist is set", async () => {
+      const logic = {
+        persist: vi.fn(),
+        restore: vi.fn(),
+      };
+      const persistence = new LRUCachePersistence<string, number>("foo", logic);
+      const cache = new LRUCache<string, number>(2, {
+        ttl: 100,
+      });
+      cache.put("a", 1);
+      await _for(50);
+      cache.put("b", 2);
+      await _for(70);
+      cache.persistence = persistence;
+      cache.autoPersist = true;
+      cache.get("a");
+      expect(logic.persist).toHaveBeenCalledWith(new Map([["b", 2]]));
     });
   });
 });

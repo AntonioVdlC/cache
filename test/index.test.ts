@@ -877,61 +877,151 @@ describe("LRUCache", () => {
   });
 
   describe("ttl", () => {
-    it("should not automatically remove the key after the specified time", async () => {
-      const cache = new LRUCache<string, number>(1, { ttl: 100 });
-      cache.put("a", 1);
-      expect(cache.has("a")).toBe(true);
-      await _for(100);
-      expect(cache.has("a")).toBe(false);
-    });
-    it("should remove the key after the specified time if accessed", async () => {
-      const cache = new LRUCache<string, number>(1, { ttl: 100 });
-      cache.put("a", 1);
-      expect(cache.has("a")).toBe(true);
-      await _for(50);
-      cache.get("a");
-      await _for(50);
-      expect(cache.has("a")).toBe(true);
-      await _for(100);
-      expect(cache.get("a")).toBe(undefined);
-    });
-    it("should remove the key after the specified time if .peek() is called", async () => {
-      const cache = new LRUCache<string, number>(1, { ttl: 100 });
-      cache.put("a", 1);
-      expect(cache.has("a")).toBe(true);
-      await _for(50);
-      cache.peek("a");
-      await _for(70);
-      // NOTE: peek() doesn't reset the timer
-      expect(cache.peek("a")).toBe(undefined);
-    });
-    it("should remove the key after the specified time if .has() is called", async () => {
-      const cache = new LRUCache<string, number>(1, { ttl: 100 });
-      cache.put("a", 1);
-      expect(cache.has("a")).toBe(true);
-      await _for(50);
-      cache.has("a");
-      await _for(70);
-      // NOTE: has() doesn't reset the timer
-      expect(cache.has("a")).toBe(false);
-    });
-    it("should persist the cache if auto-persist is set", async () => {
-      const logic = {
-        persist: vi.fn(),
-        restore: vi.fn(),
-      };
-      const persistence = new LRUCachePersistence<string, number>("foo", logic);
-      const cache = new LRUCache<string, number>(2, {
-        ttl: 100,
+    describe("reactive", () => {
+      it("should remove the key after the specified time if accessed", async () => {
+        const cache = new LRUCache<string, number>(1, { ttl: 100 });
+        cache.put("a", 1);
+        expect(cache.has("a")).toBe(true);
+        await _for(50);
+        cache.get("a");
+        await _for(50);
+        expect(cache.has("a")).toBe(true);
+        await _for(100);
+        expect(cache.get("a")).toBe(undefined);
       });
-      cache.put("a", 1);
-      await _for(50);
-      cache.put("b", 2);
-      await _for(70);
-      cache.persistence = persistence;
-      cache.autoPersist = true;
-      cache.get("a");
-      expect(logic.persist).toHaveBeenCalledWith(new Map([["b", 2]]));
+      it("should remove the key after the specified time if .peek() is called", async () => {
+        const cache = new LRUCache<string, number>(1, { ttl: 100 });
+        cache.put("a", 1);
+        expect(cache.has("a")).toBe(true);
+        await _for(50);
+        cache.peek("a");
+        await _for(70);
+        // NOTE: peek() doesn't reset the timer
+        expect(cache.peek("a")).toBe(undefined);
+      });
+      it("should remove the key after the specified time if .has() is called", async () => {
+        const cache = new LRUCache<string, number>(1, { ttl: 100 });
+        cache.put("a", 1);
+        expect(cache.has("a")).toBe(true);
+        await _for(50);
+        cache.has("a");
+        await _for(70);
+        // NOTE: has() doesn't reset the timer
+        expect(cache.has("a")).toBe(false);
+      });
+      it("should persist the cache if auto-persist is set", async () => {
+        const logic = {
+          persist: vi.fn(),
+          restore: vi.fn(),
+        };
+        const persistence = new LRUCachePersistence<string, number>(
+          "foo",
+          logic,
+        );
+        const cache = new LRUCache<string, number>(2, {
+          ttl: 100,
+        });
+        cache.put("a", 1);
+        await _for(50);
+        cache.put("b", 2);
+        await _for(70);
+        cache.persistence = persistence;
+        cache.autoPersist = true;
+        cache.get("a");
+        expect(logic.persist).toHaveBeenCalledWith(new Map([["b", 2]]));
+      });
+    });
+
+    describe("proactive", () => {
+      it("should not automatically remove the key after the specified time if ttl clean interval is not set", async () => {
+        const cache = new LRUCache<string, number>(1, { ttl: 50 });
+        cache.put("a", 1);
+        await _for(100);
+        expect(cache.size).toBe(1);
+      });
+      it("should throw an error if ttl cleanup interval is less than 1", () => {
+        expect(() => {
+          new LRUCache<string, number>(1, { ttl: 100, ttlCleanupInterval: 0 });
+        }).toThrow("TTL cleanup interval must be greater than 0");
+      });
+      it("should throw an error if ttl cleanup interval is set without ttl", () => {
+        expect(() => {
+          new LRUCache<string, number>(1, { ttlCleanupInterval: 100 });
+        }).toThrow("TTL cleanup interval requires TTL to be set");
+      });
+      it("should automatically evict the key if ttl cleanup interval is set", async () => {
+        const cache = new LRUCache<string, number>(1, {
+          ttl: 50,
+          ttlCleanupInterval: 100,
+        });
+        cache.put("a", 1);
+        await _for(150);
+        expect(cache.size).toBe(0);
+      });
+
+      describe("methods", () => {
+        describe("ttlClearCleanupInterval", () => {
+          it("should clear the interval if ttlClearCleanupInterval is called", async () => {
+            const cache = new LRUCache<string, number>(1, {
+              ttl: 50,
+              ttlCleanupInterval: 100,
+            });
+            cache.put("a", 1);
+            await _for(150);
+            expect(cache.size).toBe(0);
+            await _for(10);
+            cache.put("b", 2);
+            cache.ttlClearCleanupInterval();
+            await _for(150);
+            expect(cache.size).toBe(1);
+          });
+        });
+      });
+
+      describe("setters", () => {
+        describe("ttlCleanupInterval", () => {
+          it("should throw an error if ttlCleanupInterval is negative", () => {
+            const cache = new LRUCache<string, number>(1, { ttl: 100 });
+            expect(() => {
+              cache.ttlCleanupInterval = -1;
+            }).toThrow("TTL cleanup interval must be greater than 0");
+          });
+          it("should throw an error if ttl is not set", () => {
+            const cache = new LRUCache<string, number>(1);
+            expect(() => {
+              cache.ttlCleanupInterval = 100;
+            }).toThrow("TTL cleanup interval requires TTL to be set");
+          });
+          it("should unset the interval if setter ttlCleanupInterval is passed 0", async () => {
+            const cache = new LRUCache<string, number>(1, {
+              ttl: 50,
+              ttlCleanupInterval: 100,
+            });
+            cache.put("a", 1);
+            await _for(150);
+            expect(cache.size).toBe(0);
+            await _for(10);
+            cache.put("b", 2);
+            cache.ttlCleanupInterval = 0;
+            await _for(150);
+            expect(cache.size).toBe(1);
+          });
+          it("should update the interval if setter ttlCleanupInterval is called", async () => {
+            const cache = new LRUCache<string, number>(1, {
+              ttl: 50,
+              ttlCleanupInterval: 100,
+            });
+            cache.put("a", 1);
+            await _for(150);
+            expect(cache.size).toBe(0);
+            await _for(10);
+            cache.put("b", 2);
+            cache.ttlCleanupInterval = 200;
+            await _for(150);
+            expect(cache.size).toBe(1);
+          });
+        });
+      });
     });
   });
 });

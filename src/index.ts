@@ -119,6 +119,12 @@ class LRUCache<K, V> {
   #ttlMap: Map<K, number>;
 
   /**
+   * @private
+   * @type {Function | undefined} - The cleanup function for TTL items
+   */
+  #ttlClearCleanupInterval?: () => void;
+
+  /**
    * Creates a new LRUCache
    *
    * @param {number} capacity - The maximum number of items the cache can hold
@@ -126,6 +132,7 @@ class LRUCache<K, V> {
    * @property {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
    * @property {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
    * @property {number} [ttl] - The default time-to-live (TTL) for cache items (in ms)
+   * @property {number} [ttlCleanupInterval] - The interval to cleanup TTL items
    *
    * @throws {Error} - If capacity is less than 1
    *
@@ -139,6 +146,7 @@ class LRUCache<K, V> {
       persistence?: LRUCachePersistence<K, V>;
       autoPersist?: boolean;
       ttl?: number;
+      ttlCleanupInterval?: number;
     } = {},
   ) {
     if (capacity < 1) {
@@ -150,8 +158,21 @@ class LRUCache<K, V> {
 
     this.#persistence = options.persistence;
     this.#autoPersist = options.autoPersist;
+
     this.#ttl = options.ttl;
     this.#ttlMap = new Map();
+    if (options.ttlCleanupInterval && !options.ttl) {
+      throw new Error("TTL cleanup interval requires TTL to be set");
+    }
+    if (
+      options.ttlCleanupInterval !== undefined &&
+      options.ttlCleanupInterval < 1
+    ) {
+      throw new Error("TTL cleanup interval must be greater than 0");
+    }
+    this.#ttlClearCleanupInterval = this.#ttlSetCleanup(
+      options.ttlCleanupInterval,
+    );
   }
 
   /**
@@ -177,6 +198,38 @@ class LRUCache<K, V> {
       }
     }
     return false;
+  }
+
+  /**
+   * Proactive cleanup of TTL items
+   *
+   * @private
+   *
+   * @param {number} interval - The interval to cleanup TTL items
+   *
+   * @returns {Function | undefined} - The cleanup function
+   */
+  #ttlSetCleanup(interval: number = 0): (() => void) | undefined {
+    if (!interval) {
+      return;
+    }
+
+    const timeout = setInterval(() => {
+      this.#ttlMap.forEach((_, key) => this.#ttlEvict(key));
+    }, interval);
+
+    return () => clearInterval(timeout);
+  }
+
+  /**
+   * Clears the TTL cleanup interval
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2, { ttlCleanupInterval: 1000 });
+   * cache.ttlClearCleanupInterval();
+   */
+  ttlClearCleanupInterval(): void {
+    return this.#ttlClearCleanupInterval?.();
   }
 
   /**
@@ -705,6 +758,35 @@ class LRUCache<K, V> {
    */
   set ttl(ttl: number | undefined) {
     this.#ttl = ttl;
+  }
+
+  /**
+   * Sets the default time-to-live (TTL) cleanup interval
+   *
+   * @param {number} interval - The interval to cleanup TTL items
+   *
+   * @throws {Error} - If interval is less than 1
+   *
+   * @example
+   * const cache = new LRUCache<string, number>(2);
+   * cache.ttlCleanupInterval = 1000;
+   * console.log(cache.ttlCleanupInterval); // 1000
+   */
+  set ttlCleanupInterval(interval: number) {
+    this.ttlClearCleanupInterval();
+
+    if (!interval) {
+      this.#ttlClearCleanupInterval = undefined;
+      return;
+    }
+    if (interval < 1) {
+      throw new Error("TTL cleanup interval must be greater than 0");
+    }
+    if (!this.#ttl) {
+      throw new Error("TTL cleanup interval requires TTL to be set");
+    }
+
+    this.#ttlClearCleanupInterval = this.#ttlSetCleanup(interval);
   }
 }
 

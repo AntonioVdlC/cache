@@ -944,11 +944,6 @@ describe("LRUCache", () => {
           new LRUCache<string, number>(1, { ttl: 100, ttlCleanupInterval: 0 });
         }).toThrow("TTL cleanup interval must be greater than 0");
       });
-      it("should throw an error if ttl cleanup interval is set without ttl", () => {
-        expect(() => {
-          new LRUCache<string, number>(1, { ttlCleanupInterval: 100 });
-        }).toThrow("TTL cleanup interval requires TTL to be set");
-      });
       it("should automatically evict the key if ttl cleanup interval is set", async () => {
         const cache = new LRUCache<string, number>(1, {
           ttl: 50,
@@ -986,12 +981,6 @@ describe("LRUCache", () => {
               cache.ttlCleanupInterval = -1;
             }).toThrow("TTL cleanup interval must be greater than 0");
           });
-          it("should throw an error if ttl is not set", () => {
-            const cache = new LRUCache<string, number>(1);
-            expect(() => {
-              cache.ttlCleanupInterval = 100;
-            }).toThrow("TTL cleanup interval requires TTL to be set");
-          });
           it("should unset the interval if setter ttlCleanupInterval is passed 0", async () => {
             const cache = new LRUCache<string, number>(1, {
               ttl: 50,
@@ -1021,6 +1010,18 @@ describe("LRUCache", () => {
             expect(cache.size).toBe(1);
           });
         });
+      });
+    });
+    describe("put", () => {
+      it("should set a custom ttl if passed", async () => {
+        const cache = new LRUCache<string, number>(2, { ttl: 100 });
+        cache.put("a", 1, 50);
+        cache.put("b", 2);
+        expect(cache.has("a")).toBe(true);
+        expect(cache.has("b")).toBe(true);
+        await _for(70);
+        expect(cache.has("a")).toBe(false);
+        expect(cache.has("b")).toBe(true);
       });
     });
   });

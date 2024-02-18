@@ -23,6 +23,8 @@
  * @method persist - Persists the cache
  * @method restore - Restores the cache
  * @method toMap - Converts the cache to a Map
+ * @method ttlClearCleanupInterval - Clears the TTL cleanup interval
+ * @method ttlCleanupInterval - Sets the default time-to-live (TTL) cleanup interval
  *
  * @getter first - Gets the first key in the cache
  * @getter last - Gets the last key in the cache
@@ -36,10 +38,13 @@
  * @setter persistence - Sets the cache's persistence
  * @setter autoPersist - Sets whether the cache is auto-persisted (persisted on every change)
  * @setter ttl - Sets the default time-to-live (TTL) for cache items (in ms)
+ * @setter ttlCleanupInterval - Sets the default time-to-live (TTL) cleanup interval
  *
  * @throws {Error} - If capacity is less than 1
  * @throws {Error} - If event being registered is invalid
  * @throws {Error} - If persistence is not set
+ * @throws {Error} - If interval is less than 1
+ * @throws {Error} - If TTL cleanup interval must be greater than 0
  *
  * @example
  * const cache = new LRUCache<string, number>(2);
@@ -113,10 +118,10 @@ class LRUCache<K, V> {
 
   /**
    * @private
-   * @type {Map<K, number>} - The map that holds the time-to-live (TTL) for
+   * @type {Map<K, { ttl: number; expiresAt: number }>} - The map that holds the time-to-live (TTL) for
    * cache items
    */
-  #ttlMap: Map<K, number>;
+  #ttlMap: Map<K, { ttl: number; expiresAt: number }>;
 
   /**
    * @private
@@ -135,6 +140,7 @@ class LRUCache<K, V> {
    * @property {number} [ttlCleanupInterval] - The interval to cleanup TTL items
    *
    * @throws {Error} - If capacity is less than 1
+   * @throws {Error} - If TTL cleanup interval must be greater than 0
    *
    * @example
    * const cache = new LRUCache<string, number>(2);
@@ -161,9 +167,6 @@ class LRUCache<K, V> {
 
     this.#ttl = options.ttl;
     this.#ttlMap = new Map();
-    if (options.ttlCleanupInterval && !options.ttl) {
-      throw new Error("TTL cleanup interval requires TTL to be set");
-    }
     if (
       options.ttlCleanupInterval !== undefined &&
       options.ttlCleanupInterval < 1
@@ -187,7 +190,7 @@ class LRUCache<K, V> {
   #ttlEvict(key: K): boolean {
     if (this.#ttlMap.has(key)) {
       const ttl = this.#ttlMap.get(key);
-      if (ttl && Date.now() > ttl) {
+      if (ttl && Date.now() > ttl.expiresAt) {
         this.#emit(CacheEvent.Eviction, key, this.#map.get(key));
         this.#map.delete(key);
         this.#ttlMap.delete(key);
@@ -260,8 +263,11 @@ class LRUCache<K, V> {
       this.#map.set(key, value);
 
       if (this.#ttl) {
-        this.#ttlMap.delete(key);
-        this.#ttlMap.set(key, Date.now() + this.#ttl);
+        const ttl = this.#ttlMap.get(key)!.ttl;
+        this.#ttlMap.set(key, {
+          ttl,
+          expiresAt: Date.now() + ttl,
+        });
       }
 
       if (this.#autoPersist) {
@@ -282,6 +288,7 @@ class LRUCache<K, V> {
    *
    * @param {K} key - The key to put the value for
    * @param {V} value - The value to put for the key
+   * @param {number} [ttl] - The time-to-live (TTL) for the key-value pair (in ms)
    *
    * @example
    * const cache = new LRUCache<string, number>(2);
@@ -292,7 +299,7 @@ class LRUCache<K, V> {
    * cache.get("b"); // 2
    * cache.get("c"); // 3
    */
-  put(key: K, value: V): void {
+  put(key: K, value: V, ttl?: number): void {
     if (this.#map.has(key)) {
       this.#map.delete(key);
       this.#ttlMap.delete(key);
@@ -305,10 +312,16 @@ class LRUCache<K, V> {
     }
 
     this.#map.set(key, value);
-    if (this.#ttl) {
-      this.#ttlMap.set(key, Date.now() + this.#ttl);
-    }
     this.#emit(CacheEvent.Insertion, key, value);
+
+    if (ttl) {
+      this.#ttlMap.set(key, { ttl, expiresAt: Date.now() + ttl });
+    } else if (this.#ttl) {
+      this.#ttlMap.set(key, {
+        ttl: this.#ttl,
+        expiresAt: Date.now() + this.#ttl,
+      });
+    }
 
     if (this.#autoPersist) {
       this.persist();
@@ -781,9 +794,6 @@ class LRUCache<K, V> {
     }
     if (interval < 1) {
       throw new Error("TTL cleanup interval must be greater than 0");
-    }
-    if (!this.#ttl) {
-      throw new Error("TTL cleanup interval requires TTL to be set");
     }
 
     this.#ttlClearCleanupInterval = this.#ttlSetCleanup(interval);

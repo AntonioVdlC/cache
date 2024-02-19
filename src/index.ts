@@ -10,6 +10,8 @@
  * @property {LRUCachePersistence<K, V>} [persistence] - The cache's persistence
  * @property {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
  * @property {number} [ttl] - The default time-to-live (TTL) for cache items (in ms)
+ * @property {number} [ttlCleanupInterval] - The interval to cleanup TTL items
+ * @property {CacheEvictionPolicy<K, V>} [evictionPolicy] - The cache eviction policy
  *
  * @method get - Gets the value associated with the key
  * @method put - Puts the key-value pair into the cache
@@ -70,7 +72,6 @@ class LRUCache<K, V> {
 
   /**
    * @private
-   * @type {Object} - Internal tracking of statistical cache events
    * @property {number} hit - The number of successful retrievals from the
    * cache.
    * @property {number} miss - The number of failed retrievals from the cache.
@@ -130,6 +131,12 @@ class LRUCache<K, V> {
   #ttlClearCleanupInterval?: () => void;
 
   /**
+   * @private
+   * @type {CacheEvictionPolicy<K, V> | undefined} - The cache eviction policy
+   */
+  #evictionPolicy: CacheEvictionPolicy<K, V>;
+
+  /**
    * Creates a new LRUCache
    *
    * @param {number} capacity - The maximum number of items the cache can hold
@@ -138,6 +145,7 @@ class LRUCache<K, V> {
    * @property {boolean} [autoPersist] - Whether the cache is auto-persisted (persisted on every change)
    * @property {number} [ttl] - The default time-to-live (TTL) for cache items (in ms)
    * @property {number} [ttlCleanupInterval] - The interval to cleanup TTL items
+   * @property {CacheEvictionPolicy<K, V>} [evictionPolicy] - The cache eviction policy
    *
    * @throws {Error} - If capacity is less than 1
    * @throws {Error} - If TTL cleanup interval must be greater than 0
@@ -148,12 +156,13 @@ class LRUCache<K, V> {
    */
   constructor(
     capacity: number,
-    options: {
-      persistence?: LRUCachePersistence<K, V>;
-      autoPersist?: boolean;
-      ttl?: number;
-      ttlCleanupInterval?: number;
-    } = {},
+    {
+      persistence,
+      autoPersist,
+      ttl,
+      ttlCleanupInterval,
+      evictionPolicy = (cache) => cache.first!,
+    }: LRUCacheOptions<K, V> = {},
   ) {
     if (capacity < 1) {
       throw new Error("Capacity must be greater than 0");
@@ -162,24 +171,21 @@ class LRUCache<K, V> {
     this.#capacity = capacity;
     this.#map = new Map();
 
-    this.#persistence = options.persistence;
-    this.#autoPersist = options.autoPersist;
+    this.#persistence = persistence;
+    this.#autoPersist = autoPersist;
 
-    this.#ttl = options.ttl;
+    this.#evictionPolicy = evictionPolicy;
+
+    this.#ttl = ttl;
     this.#ttlMap = new Map();
-    if (
-      options.ttlCleanupInterval !== undefined &&
-      options.ttlCleanupInterval < 1
-    ) {
+    if (ttlCleanupInterval !== undefined && ttlCleanupInterval < 1) {
       throw new Error("TTL cleanup interval must be greater than 0");
     }
-    this.#ttlClearCleanupInterval = this.#ttlSetCleanup(
-      options.ttlCleanupInterval,
-    );
+    this.#ttlClearCleanupInterval = this.#ttlSetCleanup(ttlCleanupInterval);
   }
 
   /**
-   * Evicts the least recently used item from the cache
+   * Evicts the cache item if it has expired
    *
    * @private
    *
@@ -304,7 +310,7 @@ class LRUCache<K, V> {
       this.#map.delete(key);
       this.#ttlMap.delete(key);
     } else if (this.size === this.capacity) {
-      const key = this.first!;
+      const key = this.#evictionPolicy(this);
       this.#emit(CacheEvent.Eviction, key, this.#map.get(key));
       this.#map.delete(key);
       this.#ttlMap.delete(key);
@@ -478,7 +484,7 @@ class LRUCache<K, V> {
     this.#capacity = capacity;
 
     while (this.size > this.capacity) {
-      const key = this.first!;
+      const key = this.#evictionPolicy(this);
       this.#emit(CacheEvent.Eviction, key, this.#map.get(key));
       this.#map.delete(key);
     }
@@ -953,6 +959,19 @@ export class LRUCachePersistence<K, V> {
     return this.#cacheKey;
   }
 }
+
+/**
+ * A cache eviction policy
+ */
+export type CacheEvictionPolicy<K, V> = (cache: LRUCache<K, V>) => K;
+
+export type LRUCacheOptions<K, V> = {
+  persistence?: LRUCachePersistence<K, V>;
+  autoPersist?: boolean;
+  ttl?: number;
+  ttlCleanupInterval?: number;
+  evictionPolicy?: CacheEvictionPolicy<K, V>;
+};
 
 /**
  * A UUIDv4 generator

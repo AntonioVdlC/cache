@@ -6,6 +6,8 @@ import LRUCache, {
   __test__uuidv4 as uuidv4,
 } from "../src";
 
+import type { LRUCacheOptions } from "../src";
+
 const localStorageMock = {
   getItem: vi.fn(),
   setItem: vi.fn(),
@@ -1023,6 +1025,75 @@ describe("LRUCache", () => {
         expect(cache.has("a")).toBe(false);
         expect(cache.has("b")).toBe(true);
       });
+    });
+  });
+
+  describe("evictionPolicy", () => {
+    it("should remove the least recently used key by default", () => {
+      const cache = new LRUCache<string, number>(2);
+      cache.put("a", 1);
+      cache.put("b", 2);
+      cache.get("a");
+      cache.put("c", 3);
+      expect(cache.has("b")).toBe(false);
+    });
+    it("should remove the most recently used (MRU) key", () => {
+      const cache = new LRUCache<string, number>(2, {
+        evictionPolicy: (cache) => cache.last!,
+      });
+      cache.put("a", 1);
+      cache.put("b", 2);
+      cache.get("a");
+      cache.put("c", 3);
+      expect(cache.has("a")).toBe(false);
+    });
+    it("should remove the first in, first out (FIFO) key", () => {
+      class FIFOCache<K, V> extends LRUCache<K, V> {
+        list?: K[];
+
+        constructor(capacity: number, options?: LRUCacheOptions<K, V>) {
+          super(capacity, options);
+          this.list = [];
+        }
+
+        put(key: K, value: V, ttl?: number) {
+          super.put(key, value, ttl);
+          this.list!.push(key);
+        }
+      }
+      const cache = new FIFOCache<string, number>(2, {
+        evictionPolicy: (cache: FIFOCache<string, number>) =>
+          cache.list!.shift()!,
+      });
+      cache.put("a", 1);
+      cache.put("b", 2);
+      cache.get("a");
+      cache.put("c", 3);
+      expect(cache.has("a")).toBe(false);
+    });
+    it("should remove the last in, first out (LIFO) key", () => {
+      class LIFOCache<K, V> extends LRUCache<K, V> {
+        list?: K[];
+
+        constructor(capacity: number, options?: LRUCacheOptions<K, V>) {
+          super(capacity, options);
+          this.list = [];
+        }
+
+        put(key: K, value: V, ttl?: number) {
+          super.put(key, value, ttl);
+          this.list!.push(key);
+        }
+      }
+      const cache = new LIFOCache<string, number>(2, {
+        evictionPolicy: (cache: LIFOCache<string, number>) =>
+          cache.list!.pop()!,
+      });
+      cache.put("a", 1);
+      cache.put("b", 2);
+      cache.get("a");
+      cache.put("c", 3);
+      expect(cache.has("b")).toBe(false);
     });
   });
 });

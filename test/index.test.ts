@@ -1047,8 +1047,8 @@ describe("LRUCache", () => {
       cache.put("c", 3);
       expect(cache.has("a")).toBe(false);
     });
-    it("should remove the first in, first out (FIFO) key", () => {
-      class FIFOCache<K, V> extends LRUCache<K, V> {
+    it("should remove a random (RR) key", () => {
+      class CacheWithList<K, V> extends LRUCache<K, V> {
         list?: K[];
 
         constructor(capacity: number, options?: LRUCacheOptions<K, V>) {
@@ -1061,8 +1061,32 @@ describe("LRUCache", () => {
           this.list!.push(key);
         }
       }
-      const cache = new FIFOCache<string, number>(2, {
-        evictionPolicy: (cache: FIFOCache<string, number>) =>
+      const cache = new CacheWithList<string, number>(2, {
+        evictionPolicy: (cache: CacheWithList<string, number>) =>
+          cache.list![Math.floor(Math.random() * cache.list!.length)],
+      });
+      cache.put("a", 1);
+      cache.put("b", 2);
+      cache.get("a");
+      cache.put("c", 3);
+      expect(cache.size).toBe(2);
+    });
+    it("should remove the first in, first out (FIFO) key", () => {
+      class CacheWithList<K, V> extends LRUCache<K, V> {
+        list?: K[];
+
+        constructor(capacity: number, options?: LRUCacheOptions<K, V>) {
+          super(capacity, options);
+          this.list = [];
+        }
+
+        put(key: K, value: V, ttl?: number) {
+          super.put(key, value, ttl);
+          this.list!.push(key);
+        }
+      }
+      const cache = new CacheWithList<string, number>(2, {
+        evictionPolicy: (cache: CacheWithList<string, number>) =>
           cache.list!.shift()!,
       });
       cache.put("a", 1);
@@ -1072,7 +1096,7 @@ describe("LRUCache", () => {
       expect(cache.has("a")).toBe(false);
     });
     it("should remove the last in, first out (LIFO) key", () => {
-      class LIFOCache<K, V> extends LRUCache<K, V> {
+      class CacheWithList<K, V> extends LRUCache<K, V> {
         list?: K[];
 
         constructor(capacity: number, options?: LRUCacheOptions<K, V>) {
@@ -1085,8 +1109,8 @@ describe("LRUCache", () => {
           this.list!.push(key);
         }
       }
-      const cache = new LIFOCache<string, number>(2, {
-        evictionPolicy: (cache: LIFOCache<string, number>) =>
+      const cache = new CacheWithList<string, number>(2, {
+        evictionPolicy: (cache: CacheWithList<string, number>) =>
           cache.list!.pop()!,
       });
       cache.put("a", 1);
@@ -1094,6 +1118,102 @@ describe("LRUCache", () => {
       cache.get("a");
       cache.put("c", 3);
       expect(cache.has("b")).toBe(false);
+    });
+    it("should remove the least frequently used (LFU) key", () => {
+      class CacheWithFrequencies<K, V> extends LRUCache<K, V> {
+        frequencies?: Map<K, number>;
+
+        constructor(capacity: number, options?: LRUCacheOptions<K, V>) {
+          super(capacity, options);
+          this.frequencies = new Map();
+        }
+
+        get(key: K): V | undefined {
+          const value = super.get(key);
+          if (value) {
+            this.frequencies!.set(key, (this.frequencies!.get(key) || 0) + 1);
+          } else {
+            this.frequencies!.delete(key);
+          }
+          return value;
+        }
+
+        put(key: K, value: V, ttl?: number) {
+          super.put(key, value, ttl);
+          this.frequencies!.set(key, 0);
+        }
+
+        remove(key: K) {
+          super.remove(key);
+          this.frequencies!.delete(key);
+        }
+      }
+      const cache = new CacheWithFrequencies<string, number>(2, {
+        evictionPolicy: (cache: CacheWithFrequencies<string, number>) => {
+          let min = Infinity;
+          let lfu = "";
+          for (const [key, freq] of cache.frequencies!) {
+            if (freq < min) {
+              min = freq;
+              lfu = key;
+            }
+          }
+          return lfu;
+        },
+      });
+      cache.put("a", 1);
+      cache.put("b", 2);
+      cache.get("a");
+      cache.put("c", 3);
+      expect(cache.has("b")).toBe(false);
+    });
+    it("should remove the most frequently used (MRU) key", () => {
+      class CacheWithFrequencies<K, V> extends LRUCache<K, V> {
+        frequencies?: Map<K, number>;
+
+        constructor(capacity: number, options?: LRUCacheOptions<K, V>) {
+          super(capacity, options);
+          this.frequencies = new Map();
+        }
+
+        get(key: K): V | undefined {
+          const value = super.get(key);
+          if (value) {
+            this.frequencies!.set(key, (this.frequencies!.get(key) || 0) + 1);
+          } else {
+            this.frequencies!.delete(key);
+          }
+          return value;
+        }
+
+        put(key: K, value: V, ttl?: number) {
+          super.put(key, value, ttl);
+          this.frequencies!.set(key, 0);
+        }
+
+        remove(key: K) {
+          super.remove(key);
+          this.frequencies!.delete(key);
+        }
+      }
+      const cache = new CacheWithFrequencies<string, number>(2, {
+        evictionPolicy: (cache: CacheWithFrequencies<string, number>) => {
+          let max = -Infinity;
+          let mfu = "";
+          for (const [key, freq] of cache.frequencies!) {
+            if (freq > max) {
+              max = freq;
+              mfu = key;
+            }
+          }
+          return mfu;
+        },
+      });
+      cache.put("a", 1);
+      cache.put("b", 2);
+      cache.get("a");
+      cache.put("c", 3);
+      expect(cache.has("a")).toBe(false);
     });
   });
 });

@@ -1,7 +1,7 @@
 {
   "name": "@antoniovdlc/cache",
   "version": "1.0.0",
-  "description": "",
+  "description": "A simple, yet over-engineered, cache",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
@@ -25,7 +25,10 @@
     "build:lib": "rollup -c",
     "postversion": "git push && git push --tags"
   },
-  "keywords": [],
+  "keywords": [
+    "cache",
+    "lru"
+  ],
   "author": "Antonio Villagra De La Cruz",
   "repository": {
     "type": "git",

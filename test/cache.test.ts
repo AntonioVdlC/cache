@@ -1013,14 +1013,21 @@ describe("Cache", () => {
         }
       }
       const cache = new CacheWithList<string, number>(2, {
-        evictionPolicy: (cache: CacheWithList<string, number>) =>
-          cache.list![Math.floor(Math.random() * cache.list!.length)],
+        evictionPolicy: (cache: CacheWithList<string, number>) => {
+          const index = Math.floor(Math.random() * cache.list!.length);
+          const key = cache.list![index];
+
+          cache.list!.splice(index, 1);
+
+          return key;
+        },
       });
       cache.put("a", 1);
       cache.put("b", 2);
       cache.get("a");
       cache.put("c", 3);
       expect(cache.size).toBe(2);
+      expect(cache.list?.length).toBe(2);
     });
     it("should remove the first in, first out (FIFO) key", () => {
       class CacheWithList<K, V> extends Cache<K, V> {
@@ -1118,7 +1125,7 @@ describe("Cache", () => {
       cache.put("c", 3);
       expect(cache.has("b")).toBe(false);
     });
-    it("should remove the most frequently used (MRU) key", () => {
+    it("should remove the most frequently used (MFU) key", () => {
       class CacheWithFrequencies<K, V> extends Cache<K, V> {
         frequencies?: Map<K, number>;
 
